@@ -21,28 +21,62 @@ void UGrabber::BeginPlay()
 void UGrabber::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	UPhysicsHandleComponent *physicsHandle = GetPhysicsHandle();
+	if (physicsHandle == nullptr)
+		return;
+
+	if (physicsHandle->GetGrabbedComponent() != nullptr)
+	{
+		FVector targetLocation = GetComponentLocation() + GetForwardVector() * holdDistance;
+		physicsHandle->SetTargetLocationAndRotation(targetLocation, GetComponentRotation());
+	}
 }
 
 void UGrabber::Grab()
+{
+	UPhysicsHandleComponent *physicsHandle = GetPhysicsHandle();
+	if (physicsHandle == nullptr)
+		return;
+
+	FHitResult hitResult;
+	bool hasHit = GetGrabbableInReach(hitResult);
+
+	if (hasHit)
+	{
+		UPrimitiveComponent *hitComponent = hitResult.GetComponent();
+		hitComponent->WakeAllRigidBodies();
+		physicsHandle->GrabComponentAtLocationWithRotation(hitComponent, NAME_None, hitResult.ImpactPoint, GetComponentRotation());
+	}
+}
+void UGrabber::Release()
+{
+	UPhysicsHandleComponent *physicsHandle = GetPhysicsHandle();
+
+	if (physicsHandle == nullptr)
+		return;
+
+	if (physicsHandle->GetGrabbedComponent() != nullptr)
+	{
+		physicsHandle->ReleaseComponent();
+	}
+}
+
+UPhysicsHandleComponent *UGrabber::GetPhysicsHandle() const
+{
+	UPhysicsHandleComponent *result = GetOwner()->FindComponentByClass<UPhysicsHandleComponent>();
+
+	if (result == nullptr)
+		UE_LOG(LogTemp, Error, TEXT("Grabber requires a PhysicsHandleComponent"));
+
+	return result;
+}
+
+bool UGrabber::GetGrabbableInReach(FHitResult& _outHitResult) const
 {
 	FVector start = GetComponentLocation();
 	FVector end = start + GetForwardVector() * maxGrabDistance;
 
 	FCollisionShape sphere = FCollisionShape::MakeSphere(grabRadius);
-	FHitResult hitResult;
-	bool hasHit = GetWorld()->SweepSingleByChannel(hitResult, start, end, FQuat::Identity, ECC_GameTraceChannel2, sphere);
-
-	if (hasHit)
-	{
-		AActor *hitActor = hitResult.GetActor();
-		UE_LOG(LogTemp, Error, TEXT("Hit Actor: %s"), *hitActor->GetActorNameOrLabel());
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("NOOOOOOOO"));
-	}
-}
-void UGrabber::Release()
-{
-	UE_LOG(LogTemp, Error, TEXT("Release"));
+	return GetWorld()->SweepSingleByChannel(_outHitResult, start, end, FQuat::Identity, ECC_GameTraceChannel2, sphere);
 }
